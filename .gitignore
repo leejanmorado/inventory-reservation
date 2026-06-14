@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.js.map
+.vercel/
+supabase/.branches/
+supabase/.temp/
+supabase/snippets/
+.claude/
