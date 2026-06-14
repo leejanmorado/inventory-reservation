@@ -26,6 +26,23 @@ describe('Items API', () => {
   it('POST /v1/items — returns 400 for missing fields', async () => {
     const res = await supertest(app).post('/v1/items').send({});
     expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
+  it('POST /v1/items — returns 400 for initial_quantity of zero', async () => {
+    const res = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Widget', initial_quantity: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
+  it('POST /v1/items — returns 400 for negative initial_quantity', async () => {
+    const res = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Widget', initial_quantity: -1 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
   });
 
   it('GET /v1/items/:id — returns item status with quantity breakdown', async () => {
@@ -45,6 +62,29 @@ describe('Items API', () => {
       available_quantity: 5,
       confirmed_quantity: 0,
       held_quantity: 0,
+    });
+  });
+
+  it('GET /v1/items/:id — held_quantity and available_quantity reflect active pending reservation', async () => {
+    const createRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Quantity Breakdown Item', initial_quantity: 10 });
+    const itemId = createRes.body.id;
+    itemIds.push(itemId);
+
+    await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-breakdown',
+      quantity: 4,
+    });
+
+    const res = await supertest(app).get(`/v1/items/${itemId}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      total_quantity: 10,
+      held_quantity: 4,
+      available_quantity: 6,
+      confirmed_quantity: 0,
     });
   });
 

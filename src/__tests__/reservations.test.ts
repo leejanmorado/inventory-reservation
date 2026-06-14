@@ -31,9 +31,30 @@ describe('Reservations API', () => {
       quantity: 3,
       status: 'PENDING',
     });
+    expect(res.body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(res.body.expires_at).toBeDefined();
     expect(res.body.confirmed_at).toBeNull();
     expect(res.body.cancelled_at).toBeNull();
+  });
+
+  it('POST /v1/reservations — returns 400 for quantity of zero', async () => {
+    const res = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-zero',
+      quantity: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
+  it('POST /v1/reservations — returns 400 for negative quantity', async () => {
+    const res = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-negative',
+      quantity: -1,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
   });
 
   it('POST /v1/reservations — returns 409 when stock is insufficient', async () => {
@@ -73,21 +94,6 @@ describe('Reservations API', () => {
     expect(res.body.confirmed_at).not.toBeNull();
   });
 
-  it('POST /v1/reservations/:id/cancel — cancels a PENDING reservation', async () => {
-    const createRes = await supertest(app).post('/v1/reservations').send({
-      item_id: itemId,
-      customer_id: 'cust-cancel',
-      quantity: 1,
-    });
-    const reservationId = createRes.body.id;
-
-    const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: reservationId, status: 'CANCELLED' });
-    expect(res.body.cancelled_at).not.toBeNull();
-  });
-
   it('POST /v1/reservations/:id/confirm — returns 409 for already-cancelled reservation', async () => {
     const createRes = await supertest(app).post('/v1/reservations').send({
       item_id: itemId,
@@ -103,9 +109,88 @@ describe('Reservations API', () => {
     expect(res.body.error).toBe('reservation_cancelled');
   });
 
+  it('POST /v1/reservations/:id/confirm — returns 409 for expired reservation and does not deduct inventory', async () => {
+    const itemRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Expiry Confirm Item', initial_quantity: 10 });
+    const expItemId = itemRes.body.id;
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: expItemId,
+      customer_id: 'cust-exp-confirm',
+      quantity: 5,
+    });
+    const reservationId = reservationRes.body.id;
+
+    // Force the reservation past its expiry and run maintenance to mark it EXPIRED
+    await supabase
+      .from('reservations')
+      .update({ expires_at: new Date(0).toISOString() })
+      .eq('id', reservationId);
+    await supertest(app).post('/v1/maintenance/expire-reservations');
+
+    const res = await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('reservation_expired');
+
+    // No inventory should have been deducted
+    const statusRes = await supertest(app).get(`/v1/items/${expItemId}`);
+    expect(statusRes.body.available_quantity).toBe(10);
+    expect(statusRes.body.confirmed_quantity).toBe(0);
+
+    await supabase.from('reservations').delete().eq('item_id', expItemId);
+    await supabase.from('items').delete().eq('id', expItemId);
+  });
+
+  it('POST /v1/reservations/:id/cancel — cancels a PENDING reservation', async () => {
+    const createRes = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-cancel',
+      quantity: 1,
+    });
+    const reservationId = createRes.body.id;
+
+    const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: reservationId, status: 'CANCELLED' });
+    expect(res.body.cancelled_at).not.toBeNull();
+  });
+
+  it('POST /v1/reservations/:id/cancel — returns 409 for already-confirmed reservation and does not release inventory', async () => {
+    const itemRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Cancel After Confirm Item', initial_quantity: 10 });
+    const cancelConfItemId = itemRes.body.id;
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: cancelConfItemId,
+      customer_id: 'cust-cancel-conf',
+      quantity: 5,
+    });
+    const reservationId = reservationRes.body.id;
+
+    await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
+
+    const statusBefore = await supertest(app).get(`/v1/items/${cancelConfItemId}`);
+    expect(statusBefore.body.confirmed_quantity).toBe(5);
+    expect(statusBefore.body.available_quantity).toBe(5);
+
+    const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('reservation_confirmed');
+
+    // Inventory must not have been released
+    const statusAfter = await supertest(app).get(`/v1/items/${cancelConfItemId}`);
+    expect(statusAfter.body.confirmed_quantity).toBe(5);
+    expect(statusAfter.body.available_quantity).toBe(5);
+
+    await supabase.from('reservations').delete().eq('item_id', cancelConfItemId);
+    await supabase.from('items').delete().eq('id', cancelConfItemId);
+  });
+
   describe('Idempotency — confirm twice does not double-deduct', () => {
     it('second confirm returns the same CONFIRMED state without changing confirmed_quantity', async () => {
-      // Dedicated item so confirmed_quantity is unambiguous
       const itemRes = await supertest(app)
         .post('/v1/items')
         .send({ name: 'Idempotency Item', initial_quantity: 10 });
@@ -118,7 +203,6 @@ describe('Reservations API', () => {
       });
       const reservationId = reservationRes.body.id;
 
-      // First confirm
       const confirm1 = await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
       expect(confirm1.status).toBe(200);
       expect(confirm1.body.status).toBe('CONFIRMED');
@@ -134,7 +218,41 @@ describe('Reservations API', () => {
       const statusAfterSecond = await supertest(app).get(`/v1/items/${idempItemId}`);
       expect(statusAfterSecond.body.confirmed_quantity).toBe(5); // still 5, not 10
 
-      // Cleanup
+      await supabase.from('reservations').delete().eq('item_id', idempItemId);
+      await supabase.from('items').delete().eq('id', idempItemId);
+    });
+  });
+
+  describe('Idempotency — cancel twice does not double-release', () => {
+    it('second cancel returns the same CANCELLED state without changing available_quantity', async () => {
+      const itemRes = await supertest(app)
+        .post('/v1/items')
+        .send({ name: 'Cancel Idempotency Item', initial_quantity: 10 });
+      const idempItemId = itemRes.body.id;
+
+      const reservationRes = await supertest(app).post('/v1/reservations').send({
+        item_id: idempItemId,
+        customer_id: 'cust-cancel-idemp',
+        quantity: 5,
+      });
+      const reservationId = reservationRes.body.id;
+
+      const cancel1 = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+      expect(cancel1.status).toBe(200);
+      expect(cancel1.body.status).toBe('CANCELLED');
+
+      const statusAfterFirst = await supertest(app).get(`/v1/items/${idempItemId}`);
+      expect(statusAfterFirst.body.available_quantity).toBe(10);
+      expect(statusAfterFirst.body.held_quantity).toBe(0);
+
+      // Second cancel — idempotent, must not double-release
+      const cancel2 = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+      expect(cancel2.status).toBe(200);
+      expect(cancel2.body.status).toBe('CANCELLED');
+
+      const statusAfterSecond = await supertest(app).get(`/v1/items/${idempItemId}`);
+      expect(statusAfterSecond.body.available_quantity).toBe(10); // still 10, not 15
+
       await supabase.from('reservations').delete().eq('item_id', idempItemId);
       await supabase.from('items').delete().eq('id', idempItemId);
     });
