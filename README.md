@@ -16,6 +16,17 @@ This API allows a fictitious store to manage inventory with temporary holds (res
 - **Idempotency**: Each function re-reads the locked row and short-circuits on terminal states — confirming or cancelling twice has no additional side effects.
 - **Available quantity**: Computed dynamically from `reservations` aggregation — no separate column, so expirations take effect immediately without secondary writes.
 
+### Assumptions
+
+- **Reservation window is 10 minutes** — hardcoded in the `create_reservation` PostgreSQL function. This is intentionally simple; a configurable TTL would require a schema change.
+- **No authentication or authorization** — all endpoints are open. In a real system the maintenance endpoint at minimum would require a secret header or API key.
+- **Integer quantities only** — fractional quantities (e.g. 0.5 kg) are out of scope.
+- **Single-tenant** — no concept of stores, tenants, or organizations. One Supabase project = one store.
+- **Soft expiry** — available quantity is computed dynamically using `expires_at > NOW()` filters, so inventory held by a pending reservation is automatically excluded from "held" calculations the moment it expires — no status update required. `POST /v1/maintenance/expire-reservations` exists purely to reconcile the `status` column to `EXPIRED` for bookkeeping, and to allow `cancel_reservation` to correctly reject already-expired reservations (which checks the `status` column directly).
+- **Service role key** — the API uses Supabase's `service_role` key, which has `BYPASSRLS` and pre-configured object privileges on every Supabase project. This is acceptable for a server-side API where the key is never exposed to clients.
+- **No retry on conflict** — when `create_reservation` returns `409 insufficient_inventory`, it is the caller's responsibility to retry or notify the user. The API does not queue or retry internally.
+- **Items are never deleted** — the schema has no delete endpoint for items. Deleting an item with active reservations would violate FK constraints anyway.
+
 ---
 
 ## Tech Stack
@@ -163,7 +174,7 @@ curl http://localhost:3000/v1/items/$ITEM_ID
 
 ## Known Limitations / Trade-offs
 
-- **No background expiration worker**: `POST /v1/maintenance/expire-reservations` must be called manually (or via a scheduled job/cron). Supabase `pg_cron` or Vercel Cron Jobs can automate this.
+- **No background expiration worker**: `POST /v1/maintenance/expire-reservations` reconciles stale `PENDING` rows to `EXPIRED` status. Inventory availability is unaffected (queries filter by `expires_at > NOW()` directly), but the status column becomes stale without this call. Supabase `pg_cron` or Vercel Cron Jobs can automate it.
 - **No authentication**: endpoints are open. In production, the maintenance endpoint at minimum should be secured.
-- **Service role key**: used for all operations (bypasses RLS). Production should use Row Level Security with appropriate policies.
+- **Service role key**: used for all operations; has `BYPASSRLS` and Supabase pre-configures object-level privileges for it. Production should use Row Level Security with appropriate policies per role.
 - **Connection pooling**: Vercel functions are stateless; the Supabase JS SDK handles connections per invocation. For high throughput, consider Supabase's PgBouncer pooler URL.

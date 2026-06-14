@@ -259,14 +259,3 @@ BEGIN
   GROUP BY i.id;
 END;
 $$;
-
--- ============================================================
--- GRANTS
--- Required for PostgREST (used by Supabase JS SDK) to access
--- tables and call functions as the service_role.
--- ============================================================
-
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
