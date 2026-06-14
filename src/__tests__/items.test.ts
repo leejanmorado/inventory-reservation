@@ -112,6 +112,12 @@ describe('Items API', () => {
     });
   });
 
+  it('GET /v1/items/:id — returns 400 for invalid UUID param', async () => {
+    const res = await supertest(app).get('/v1/items/not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
   it('GET /v1/items/:id — returns 404 for unknown item', async () => {
     const res = await supertest(app).get('/v1/items/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);

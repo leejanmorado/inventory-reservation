@@ -112,6 +112,12 @@ describe('Reservations API', () => {
     expect(res.body.error).toBe('reservation_cancelled');
   });
 
+  it('POST /v1/reservations/:id/confirm — returns 400 for invalid UUID param', async () => {
+    const res = await supertest(app).post('/v1/reservations/not-a-uuid/confirm');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
+  });
+
   it('POST /v1/reservations/:id/confirm — returns 404 for unknown reservation', async () => {
     const res = await supertest(app).post(
       '/v1/reservations/00000000-0000-0000-0000-000000000000/confirm',
@@ -169,6 +175,12 @@ describe('Reservations API', () => {
       status: 'CANCELLED',
       cancelled_at: expect.any(String),
     });
+  });
+
+  it('POST /v1/reservations/:id/cancel — returns 400 for invalid UUID param', async () => {
+    const res = await supertest(app).post('/v1/reservations/not-a-uuid/cancel');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('validation_error');
   });
 
   it('POST /v1/reservations/:id/cancel — returns 404 for unknown reservation', async () => {

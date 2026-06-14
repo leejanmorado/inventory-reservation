@@ -11,9 +11,36 @@ import {
 
 const registry = new OpenAPIRegistry();
 
-const ErrorSchema = z.object({
-  error: z.string().openapi({ example: 'not_found' }),
-  message: z.string().openapi({ example: 'Resource not found' }),
+const ValidationErrorSchema = z.object({
+  error: z.string().openapi({ example: 'validation_error' }),
+  message: z.string().openapi({ example: 'body.quantity: Expected number, received string' }),
+});
+
+const ItemNotFoundErrorSchema = z.object({
+  error: z.string().openapi({ example: 'item_not_found' }),
+  message: z.string().openapi({ example: 'Item not found' }),
+});
+
+const ReservationNotFoundErrorSchema = z.object({
+  error: z.string().openapi({ example: 'reservation_not_found' }),
+  message: z.string().openapi({ example: 'Reservation not found' }),
+});
+
+const InsufficientInventoryErrorSchema = z.object({
+  error: z.string().openapi({ example: 'insufficient_inventory' }),
+  message: z.string().openapi({ example: 'Insufficient inventory available' }),
+});
+
+const ReservationConfirmConflictSchema = z.object({
+  error: z.string().openapi({ example: 'reservation_expired' }),
+  message: z.string().openapi({ example: 'Reservation has expired' }),
+});
+
+const ReservationCancelConflictSchema = z.object({
+  error: z.string().openapi({ example: 'reservation_confirmed' }),
+  message: z
+    .string()
+    .openapi({ example: 'Reservation is already confirmed and cannot be cancelled' }),
 });
 
 registry.register('Item', ItemSchema);
@@ -24,22 +51,12 @@ registry.register('ReservationCancelResponse', ReservationCancelResponseSchema);
 registry.register('CreateItemRequest', CreateItemSchema);
 registry.register('CreateReservationRequest', CreateReservationSchema);
 registry.register('ExpireReservationsResponse', ExpireReservationsResponseSchema);
-registry.register('Error', ErrorSchema);
-
-const errorResponses = {
-  400: {
-    description: 'Validation error',
-    content: { 'application/json': { schema: ErrorSchema } },
-  },
-  404: {
-    description: 'Not found',
-    content: { 'application/json': { schema: ErrorSchema } },
-  },
-  409: {
-    description: 'Conflict',
-    content: { 'application/json': { schema: ErrorSchema } },
-  },
-};
+registry.register('ValidationError', ValidationErrorSchema);
+registry.register('ItemNotFoundError', ItemNotFoundErrorSchema);
+registry.register('ReservationNotFoundError', ReservationNotFoundErrorSchema);
+registry.register('InsufficientInventoryError', InsufficientInventoryErrorSchema);
+registry.register('ReservationConfirmConflict', ReservationConfirmConflictSchema);
+registry.register('ReservationCancelConflict', ReservationCancelConflictSchema);
 
 registry.registerPath({
   method: 'post',
@@ -57,7 +74,10 @@ registry.registerPath({
       description: 'Item created successfully',
       content: { 'application/json': { schema: ItemSchema } },
     },
-    ...errorResponses,
+    400: {
+      description: 'Validation error',
+      content: { 'application/json': { schema: ValidationErrorSchema } },
+    },
   },
 });
 
@@ -78,7 +98,14 @@ registry.registerPath({
       description: 'Item status',
       content: { 'application/json': { schema: ItemStatusSchema } },
     },
-    ...errorResponses,
+    400: {
+      description: 'Validation error',
+      content: { 'application/json': { schema: ValidationErrorSchema } },
+    },
+    404: {
+      description: 'Item not found',
+      content: { 'application/json': { schema: ItemNotFoundErrorSchema } },
+    },
   },
 });
 
@@ -99,7 +126,18 @@ registry.registerPath({
       description: 'Reservation created',
       content: { 'application/json': { schema: ReservationSchema } },
     },
-    ...errorResponses,
+    400: {
+      description: 'Validation error',
+      content: { 'application/json': { schema: ValidationErrorSchema } },
+    },
+    404: {
+      description: 'Item not found',
+      content: { 'application/json': { schema: ItemNotFoundErrorSchema } },
+    },
+    409: {
+      description: 'Insufficient inventory',
+      content: { 'application/json': { schema: InsufficientInventoryErrorSchema } },
+    },
   },
 });
 
@@ -120,7 +158,32 @@ registry.registerPath({
       description: 'Reservation confirmed',
       content: { 'application/json': { schema: ReservationConfirmResponseSchema } },
     },
-    ...errorResponses,
+    400: {
+      description: 'Validation error',
+      content: { 'application/json': { schema: ValidationErrorSchema } },
+    },
+    404: {
+      description: 'Reservation not found',
+      content: { 'application/json': { schema: ReservationNotFoundErrorSchema } },
+    },
+    409: {
+      description: 'Reservation is expired or cancelled',
+      content: {
+        'application/json': {
+          schema: ReservationConfirmConflictSchema,
+          examples: {
+            reservation_expired: {
+              summary: 'Reservation has expired',
+              value: { error: 'reservation_expired', message: 'Reservation has expired' },
+            },
+            reservation_cancelled: {
+              summary: 'Reservation was cancelled',
+              value: { error: 'reservation_cancelled', message: 'Reservation has been cancelled' },
+            },
+          },
+        },
+      },
+    },
   },
 });
 
@@ -141,7 +204,35 @@ registry.registerPath({
       description: 'Reservation cancelled',
       content: { 'application/json': { schema: ReservationCancelResponseSchema } },
     },
-    ...errorResponses,
+    400: {
+      description: 'Validation error',
+      content: { 'application/json': { schema: ValidationErrorSchema } },
+    },
+    404: {
+      description: 'Reservation not found',
+      content: { 'application/json': { schema: ReservationNotFoundErrorSchema } },
+    },
+    409: {
+      description: 'Reservation is confirmed or expired',
+      content: {
+        'application/json': {
+          schema: ReservationCancelConflictSchema,
+          examples: {
+            reservation_confirmed: {
+              summary: 'Reservation is already confirmed',
+              value: {
+                error: 'reservation_confirmed',
+                message: 'Reservation is already confirmed and cannot be cancelled',
+              },
+            },
+            reservation_expired: {
+              summary: 'Reservation has expired',
+              value: { error: 'reservation_expired', message: 'Reservation has expired' },
+            },
+          },
+        },
+      },
+    },
   },
 });
 
