@@ -49,4 +49,45 @@ describe('Maintenance API — expire reservations', () => {
     await supabase.from('reservations').delete().eq('item_id', itemId);
     await supabase.from('items').delete().eq('id', itemId);
   });
+
+  it('available_quantity excludes time-expired PENDING reservations without running maintenance', async () => {
+    const itemRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Formula Expiry Item', initial_quantity: 10 });
+    const itemId = itemRes.body.id;
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-formula-exp',
+      quantity: 6,
+    });
+
+    // Confirm the reservation is currently held
+    const statusBefore = await supertest(app).get(`/v1/items/${itemId}`);
+    expect(statusBefore.body.held_quantity).toBe(6);
+    expect(statusBefore.body.available_quantity).toBe(4);
+
+    // Backdate expires_at — do NOT call maintenance
+    await supabase
+      .from('reservations')
+      .update({ expires_at: new Date(0).toISOString() })
+      .eq('id', reservationRes.body.id);
+
+    // Formula must dynamically exclude the time-expired PENDING row
+    const statusAfter = await supertest(app).get(`/v1/items/${itemId}`);
+    expect(statusAfter.body.held_quantity).toBe(0);
+    expect(statusAfter.body.available_quantity).toBe(10);
+
+    // Reservation status is still PENDING (maintenance has not run)
+    const { data } = await supabase
+      .from('reservations')
+      .select('status')
+      .eq('id', reservationRes.body.id)
+      .single();
+    expect(data?.status).toBe('PENDING');
+
+    // Cleanup
+    await supabase.from('reservations').delete().eq('item_id', itemId);
+    await supabase.from('items').delete().eq('id', itemId);
+  });
 });

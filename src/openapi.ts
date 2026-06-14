@@ -4,6 +4,8 @@ import { CreateItemSchema, ItemSchema, ItemStatusSchema } from '@/schemas/items.
 import {
   CreateReservationSchema,
   ExpireReservationsResponseSchema,
+  ReservationCancelResponseSchema,
+  ReservationConfirmResponseSchema,
   ReservationSchema,
 } from '@/schemas/reservations.schema';
 
@@ -17,6 +19,8 @@ const ErrorSchema = z.object({
 registry.register('Item', ItemSchema);
 registry.register('ItemStatus', ItemStatusSchema);
 registry.register('Reservation', ReservationSchema);
+registry.register('ReservationConfirmResponse', ReservationConfirmResponseSchema);
+registry.register('ReservationCancelResponse', ReservationCancelResponseSchema);
 registry.register('CreateItemRequest', CreateItemSchema);
 registry.register('CreateReservationRequest', CreateReservationSchema);
 registry.register('ExpireReservationsResponse', ExpireReservationsResponseSchema);
@@ -66,7 +70,7 @@ registry.registerPath({
     'Returns total, available, held, and confirmed quantities. Available = total − confirmed − active pending.',
   request: {
     params: z.object({
-      id: z.string().uuid().openapi({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }),
+      id: z.uuid().openapi({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' }),
     }),
   },
   responses: {
@@ -108,13 +112,13 @@ registry.registerPath({
     'Permanently deducts the reserved quantity. Idempotent — confirming twice returns the same result. Fails if expired or cancelled.',
   request: {
     params: z.object({
-      id: z.string().uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
+      id: z.uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
     }),
   },
   responses: {
     200: {
       description: 'Reservation confirmed',
-      content: { 'application/json': { schema: ReservationSchema } },
+      content: { 'application/json': { schema: ReservationConfirmResponseSchema } },
     },
     ...errorResponses,
   },
@@ -129,13 +133,13 @@ registry.registerPath({
     'Releases the held quantity back to availability. Idempotent — cancelling twice returns the same result. Cannot cancel a confirmed reservation.',
   request: {
     params: z.object({
-      id: z.string().uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
+      id: z.uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
     }),
   },
   responses: {
     200: {
       description: 'Reservation cancelled',
-      content: { 'application/json': { schema: ReservationSchema } },
+      content: { 'application/json': { schema: ReservationCancelResponseSchema } },
     },
     ...errorResponses,
   },

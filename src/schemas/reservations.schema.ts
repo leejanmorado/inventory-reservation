@@ -20,6 +20,18 @@ export const ReservationSchema = z.object({
   created_at: z.string().openapi({ example: '2024-01-01T00:00:00.000Z' }),
 });
 
+export const ReservationConfirmResponseSchema = z.object({
+  id: z.uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
+  status: z.literal('CONFIRMED').openapi({ example: 'CONFIRMED' }),
+  confirmed_at: z.string().nullable().openapi({ example: '2024-01-01T00:05:00.000Z' }),
+});
+
+export const ReservationCancelResponseSchema = z.object({
+  id: z.uuid().openapi({ example: 'b1ffcd00-8d1c-5f09-cc7e-7cc0ce491b22' }),
+  status: z.literal('CANCELLED').openapi({ example: 'CANCELLED' }),
+  cancelled_at: z.string().nullable().openapi({ example: '2024-01-01T00:03:00.000Z' }),
+});
+
 export const ExpireReservationsResponseSchema = z.object({
   expired_count: z.number().int().openapi({ example: 3 }),
 });

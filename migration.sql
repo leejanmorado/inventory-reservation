@@ -152,7 +152,7 @@ $$;
 -- cancel_reservation
 -- Locks the reservation row, then transitions PENDING →
 -- CANCELLED. Idempotent: returns current state if already
--- CANCELLED. Raises an exception for CONFIRMED.
+-- CANCELLED. Raises an exception for CONFIRMED or EXPIRED.
 -- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION cancel_reservation(
   p_reservation_id UUID
@@ -173,10 +173,15 @@ BEGIN
     RAISE EXCEPTION 'reservation_not_found' USING HINT = 'reservation_id does not exist';
   END IF;
 
-  -- Idempotent: already cancelled or expired → return as-is
-  IF v_reservation.status IN ('CANCELLED', 'EXPIRED') THEN
+  -- Idempotent: already cancelled → return as-is
+  IF v_reservation.status = 'CANCELLED' THEN
     RETURN NEXT v_reservation;
     RETURN;
+  END IF;
+
+  IF v_reservation.status = 'EXPIRED' THEN
+    RAISE EXCEPTION 'reservation_expired'
+      USING HINT = 'Cannot cancel an expired reservation';
   END IF;
 
   IF v_reservation.status = 'CONFIRMED' THEN

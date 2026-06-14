@@ -90,8 +90,11 @@ describe('Reservations API', () => {
     const res = await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: reservationId, status: 'CONFIRMED' });
-    expect(res.body.confirmed_at).not.toBeNull();
+    expect(res.body).toEqual({
+      id: reservationId,
+      status: 'CONFIRMED',
+      confirmed_at: expect.any(String),
+    });
   });
 
   it('POST /v1/reservations/:id/confirm — returns 409 for already-cancelled reservation', async () => {
@@ -107,6 +110,14 @@ describe('Reservations API', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('reservation_cancelled');
+  });
+
+  it('POST /v1/reservations/:id/confirm — returns 404 for unknown reservation', async () => {
+    const res = await supertest(app).post(
+      '/v1/reservations/00000000-0000-0000-0000-000000000000/confirm',
+    );
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('reservation_not_found');
   });
 
   it('POST /v1/reservations/:id/confirm — returns 409 for expired reservation and does not deduct inventory', async () => {
@@ -153,8 +164,51 @@ describe('Reservations API', () => {
     const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: reservationId, status: 'CANCELLED' });
-    expect(res.body.cancelled_at).not.toBeNull();
+    expect(res.body).toEqual({
+      id: reservationId,
+      status: 'CANCELLED',
+      cancelled_at: expect.any(String),
+    });
+  });
+
+  it('POST /v1/reservations/:id/cancel — returns 404 for unknown reservation', async () => {
+    const res = await supertest(app).post(
+      '/v1/reservations/00000000-0000-0000-0000-000000000000/cancel',
+    );
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('reservation_not_found');
+  });
+
+  it('POST /v1/reservations/:id/cancel — returns 409 for expired reservation and does not release inventory', async () => {
+    const itemRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Cancel Expiry Item', initial_quantity: 10 });
+    const cancelExpItemId = itemRes.body.id;
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: cancelExpItemId,
+      customer_id: 'cust-cancel-exp',
+      quantity: 5,
+    });
+    const reservationId = reservationRes.body.id;
+
+    await supabase
+      .from('reservations')
+      .update({ expires_at: new Date(0).toISOString() })
+      .eq('id', reservationId);
+    await supertest(app).post('/v1/maintenance/expire-reservations');
+
+    const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('reservation_expired');
+
+    // Quantity was already released by expiration — available should still be 10
+    const statusRes = await supertest(app).get(`/v1/items/${cancelExpItemId}`);
+    expect(statusRes.body.available_quantity).toBe(10);
+    expect(statusRes.body.held_quantity).toBe(0);
+
+    await supabase.from('reservations').delete().eq('item_id', cancelExpItemId);
+    await supabase.from('items').delete().eq('id', cancelExpItemId);
   });
 
   it('POST /v1/reservations/:id/cancel — returns 409 for already-confirmed reservation and does not release inventory', async () => {
@@ -205,7 +259,11 @@ describe('Reservations API', () => {
 
       const confirm1 = await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
       expect(confirm1.status).toBe(200);
-      expect(confirm1.body.status).toBe('CONFIRMED');
+      expect(confirm1.body).toEqual({
+        id: reservationId,
+        status: 'CONFIRMED',
+        confirmed_at: expect.any(String),
+      });
 
       const statusAfterFirst = await supertest(app).get(`/v1/items/${idempItemId}`);
       expect(statusAfterFirst.body.confirmed_quantity).toBe(5);
@@ -213,7 +271,11 @@ describe('Reservations API', () => {
       // Second confirm — idempotent, must not double-deduct
       const confirm2 = await supertest(app).post(`/v1/reservations/${reservationId}/confirm`);
       expect(confirm2.status).toBe(200);
-      expect(confirm2.body.status).toBe('CONFIRMED');
+      expect(confirm2.body).toEqual({
+        id: reservationId,
+        status: 'CONFIRMED',
+        confirmed_at: expect.any(String),
+      });
 
       const statusAfterSecond = await supertest(app).get(`/v1/items/${idempItemId}`);
       expect(statusAfterSecond.body.confirmed_quantity).toBe(5); // still 5, not 10
@@ -239,7 +301,11 @@ describe('Reservations API', () => {
 
       const cancel1 = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
       expect(cancel1.status).toBe(200);
-      expect(cancel1.body.status).toBe('CANCELLED');
+      expect(cancel1.body).toEqual({
+        id: reservationId,
+        status: 'CANCELLED',
+        cancelled_at: expect.any(String),
+      });
 
       const statusAfterFirst = await supertest(app).get(`/v1/items/${idempItemId}`);
       expect(statusAfterFirst.body.available_quantity).toBe(10);
@@ -248,7 +314,11 @@ describe('Reservations API', () => {
       // Second cancel — idempotent, must not double-release
       const cancel2 = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
       expect(cancel2.status).toBe(200);
-      expect(cancel2.body.status).toBe('CANCELLED');
+      expect(cancel2.body).toEqual({
+        id: reservationId,
+        status: 'CANCELLED',
+        cancelled_at: expect.any(String),
+      });
 
       const statusAfterSecond = await supertest(app).get(`/v1/items/${idempItemId}`);
       expect(statusAfterSecond.body.available_quantity).toBe(10); // still 10, not 15

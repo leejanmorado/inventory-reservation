@@ -88,6 +88,30 @@ describe('Items API', () => {
     });
   });
 
+  it('GET /v1/items/:id — confirmed_quantity reduces available_quantity after confirm', async () => {
+    const createRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Confirm Qty Item', initial_quantity: 10 });
+    const itemId = createRes.body.id;
+    itemIds.push(itemId);
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-confirm-qty',
+      quantity: 4,
+    });
+    await supertest(app).post(`/v1/reservations/${reservationRes.body.id}/confirm`);
+
+    const res = await supertest(app).get(`/v1/items/${itemId}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      total_quantity: 10,
+      confirmed_quantity: 4,
+      available_quantity: 6,
+      held_quantity: 0,
+    });
+  });
+
   it('GET /v1/items/:id — returns 404 for unknown item', async () => {
     const res = await supertest(app).get('/v1/items/00000000-0000-0000-0000-000000000000');
     expect(res.status).toBe(404);
