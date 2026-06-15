@@ -1,8 +1,10 @@
 # Inventory Reservation API
 
-> **Demo video**: _link to be added_
-> **Deployed URL**: _link to be added after Vercel deployment_
-> **GitHub repo**: _link to be added_
+> **Demo video**: https://drive.google.com/file/d/11cbF0O9BE9NsHSen-J_0rBoMF0cptOnF/view?usp=sharing
+>
+> **Deployed URL**: https://inventory-reservation-beta.vercel.app/docs/
+>
+> **GitHub repo**: https://github.com/leejanmorado/inventory-reservation
 
 A concurrency-safe inventory reservation API built with Express.js, TypeScript, Supabase (PostgreSQL), and deployed on Vercel.
 
