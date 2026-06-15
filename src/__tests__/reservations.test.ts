@@ -223,6 +223,33 @@ describe('Reservations API', () => {
     await supabase.from('items').delete().eq('id', cancelExpItemId);
   });
 
+  it('POST /v1/reservations/:id/cancel — returns 409 for past-expiry PENDING reservation (maintenance not yet run)', async () => {
+    const itemRes = await supertest(app)
+      .post('/v1/items')
+      .send({ name: 'Cancel Expiry Pending Item', initial_quantity: 10 });
+    const itemId = itemRes.body.id;
+
+    const reservationRes = await supertest(app).post('/v1/reservations').send({
+      item_id: itemId,
+      customer_id: 'cust-cancel-exp-pending',
+      quantity: 5,
+    });
+    const reservationId = reservationRes.body.id;
+
+    // Push expires_at into the past without running maintenance — status stays PENDING
+    await supabase
+      .from('reservations')
+      .update({ expires_at: new Date(0).toISOString() })
+      .eq('id', reservationId);
+
+    const res = await supertest(app).post(`/v1/reservations/${reservationId}/cancel`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('reservation_expired');
+
+    await supabase.from('reservations').delete().eq('item_id', itemId);
+    await supabase.from('items').delete().eq('id', itemId);
+  });
+
   it('POST /v1/reservations/:id/cancel — returns 409 for already-confirmed reservation and does not release inventory', async () => {
     const itemRes = await supertest(app)
       .post('/v1/items')

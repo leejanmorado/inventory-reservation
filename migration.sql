@@ -179,7 +179,7 @@ BEGIN
     RETURN;
   END IF;
 
-  IF v_reservation.status = 'EXPIRED' THEN
+  IF v_reservation.status = 'EXPIRED' OR v_reservation.expires_at <= NOW() THEN
     RAISE EXCEPTION 'reservation_expired'
       USING HINT = 'Cannot cancel an expired reservation';
   END IF;
