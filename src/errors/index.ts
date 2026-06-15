@@ -34,7 +34,7 @@ export class ReservationCancelledError extends AppError {
 
 export class ReservationExpiredError extends AppError {
   constructor() {
-    super(409, 'reservation_expired', 'Cannot confirm an expired reservation');
+    super(409, 'reservation_expired', 'Reservation has expired');
   }
 }
 
