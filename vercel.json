@@ -1,15 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.ts",
-      "use": "@vercel/node"
+  "buildCommand": "npm run build:vercel",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "node_modules/swagger-ui-dist/**"
     }
-  ],
-  "rewrites": [
+  },
+  "routes": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index"
+      "src": "/(.*)",
+      "dest": "api/index.js"
     }
   ]
 }

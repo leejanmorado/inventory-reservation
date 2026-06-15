@@ -119,12 +119,18 @@ Full documentation available at `/docs` (Swagger UI) or `/openapi.json`.
 
 1. Install the Vercel CLI: `npm i -g vercel`
 2. Run `vercel` and follow the prompts to link/create a project
-3. In the Vercel dashboard, go to **Settings → Environment Variables** and add:
+3. In the Vercel dashboard, go to **Settings → Build & Deployment Settings** and set **Framework Preset** to **Other**
+4. In the Vercel dashboard, go to **Settings → Environment Variables** and add:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
-4. Deploy: `vercel --prod`
+5. Build and deploy:
+   ```bash
+   vercel pull --environment=production
+   vercel build --prod
+   vercel deploy --prebuilt --prod
+   ```
 
-The `vercel.json` at the project root handles routing — all requests are rewritten to `api/index.ts`.
+The `vercel.json` at the project root handles routing — all requests are rewritten to `api/index.js`.
 
 ---
 
