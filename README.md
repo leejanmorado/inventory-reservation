@@ -23,7 +23,7 @@ This API allows a fictitious store to manage inventory with temporary holds (res
 - **Integer quantities only** — fractional quantities (e.g. 0.5 kg) are out of scope.
 - **Single-tenant** — no concept of stores, tenants, or organizations. One Supabase project = one store.
 - **Soft expiry** — available quantity is computed dynamically using `expires_at > NOW()` filters, so inventory held by a pending reservation is automatically excluded from "held" calculations the moment it expires — no status update required. `POST /v1/maintenance/expire-reservations` exists purely to reconcile the `status` column to `EXPIRED` for bookkeeping, and to allow `cancel_reservation` to correctly reject already-expired reservations (which checks the `status` column directly).
-- **Service role key** — the API uses Supabase's `service_role` key, which has `BYPASSRLS` and pre-configured object privileges on every Supabase project. This is acceptable for a server-side API where the key is never exposed to clients.
+- **Service role key** — the API uses Supabase's `service_role` key, which has `BYPASSRLS`. Object-level privileges are granted explicitly via the GRANT block in `migration.sql`. This is acceptable for a server-side API where the key is never exposed to clients.
 - **No retry on conflict** — when `create_reservation` returns `409 insufficient_inventory`, it is the caller's responsibility to retry or notify the user. The API does not queue or retry internally.
 - **Items are never deleted** — the schema has no delete endpoint for items. Deleting an item with active reservations would violate FK constraints anyway.
 
@@ -65,15 +65,21 @@ cp .env.example .env
    ```bash
    supabase start
    ```
-   This boots a local Postgres + PostgREST + Studio. The default credentials in `.env.example` already match what it prints.
-3. Open **Supabase Studio** at `http://127.0.0.1:54323`
-4. Go to **SQL Editor**, paste the entire contents of `migration.sql`, and click **Run**
+   This boots a local Postgres + PostgREST + Studio and prints a table of credentials.
+3. Copy your `SUPABASE_SERVICE_ROLE_KEY` from the output — it is listed under **Authentication keys** as the `secret` key (starts with `sb_secret_`). You can also retrieve it later with:
+   ```bash
+   supabase status
+   ```
+   Set `SUPABASE_URL=http://127.0.0.1:54321` and paste the `secret` key into `.env`.
+4. Open **Supabase Studio** at `http://127.0.0.1:54323`
+5. Go to **SQL Editor**, paste the entire contents of `migration.sql`, and click **Run**
 
 ### Cloud
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Go to **Settings → API** and copy the **Project URL** and **service_role** key into `.env`
-3. Open **SQL Editor** in the dashboard, paste `migration.sql`, and click **Run**
+2. Copy the **Project URL** from the project dashboard home page into `SUPABASE_URL`
+3. Go to **Settings → API keys** and copy the **secret** key (`sb_secret_...`) into `SUPABASE_SERVICE_ROLE_KEY`
+4. Open **SQL Editor** in the dashboard, paste `migration.sql`, and click **Run**
 
 Both options create the `items` and `reservations` tables, indexes, and the PostgreSQL functions the API depends on.
 
@@ -176,5 +182,5 @@ curl http://localhost:3000/v1/items/$ITEM_ID
 
 - **No background expiration worker**: `POST /v1/maintenance/expire-reservations` reconciles stale `PENDING` rows to `EXPIRED` status. Inventory availability is unaffected (queries filter by `expires_at > NOW()` directly), but the status column becomes stale without this call. Supabase `pg_cron` or Vercel Cron Jobs can automate it.
 - **No authentication**: endpoints are open. In production, the maintenance endpoint at minimum should be secured.
-- **Service role key**: used for all operations; has `BYPASSRLS` and Supabase pre-configures object-level privileges for it. Production should use Row Level Security with appropriate policies per role.
+- **Service role key**: used for all operations; has `BYPASSRLS`. Object-level privileges are granted explicitly via `migration.sql`. Production should use Row Level Security with appropriate policies per role.
 - **Connection pooling**: Vercel functions are stateless; the Supabase JS SDK handles connections per invocation. For high throughput, consider Supabase's PgBouncer pooler URL.
